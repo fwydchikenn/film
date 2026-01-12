@@ -25,32 +25,34 @@ body {
 .main {
     background-color: #f8fafc;
 }
-h1, h2, h3 {
+h1, h2, h3, h4 {
     color: #0f172a;
-    font-weight: 700;
+}
+p {
+    color: #475569;
 }
 .card {
-    background: #ffffff;
+    background: white;
     padding: 24px;
     border-radius: 16px;
-    margin-bottom: 24px;
-    box-shadow: 0px 8px 24px rgba(15, 23, 42, 0.08);
+    margin-bottom: 20px;
+    box-shadow: 0px 8px 24px rgba(0,0,0,0.08);
 }
 .rec-card {
-    background: #ffffff;
+    background: white;
     padding: 20px;
     border-radius: 14px;
     text-align: center;
-    box-shadow: 0px 6px 18px rgba(15, 23, 42, 0.08);
-    transition: 0.3s ease;
+    box-shadow: 0px 6px 18px rgba(0,0,0,0.08);
+    transition: 0.3s;
 }
 .rec-card:hover {
     transform: translateY(-6px);
-    box-shadow: 0px 14px 30px rgba(37, 99, 235, 0.25);
+    box-shadow: 0px 12px 28px rgba(37,99,235,0.25);
 }
 .badge {
-    background: linear-gradient(135deg, #2563eb, #38bdf8);
-    padding: 6px 16px;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    padding: 6px 14px;
     border-radius: 999px;
     font-size: 12px;
     color: white;
@@ -61,10 +63,6 @@ h1, h2, h3 {
     color: #64748b;
     margin-top: 60px;
     font-size: 13px;
-}
-.stMultiSelect label {
-    font-weight: 600;
-    color: #0f172a;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -121,10 +119,7 @@ def recommend_from_history(watched_titles, top_n=10):
     similarity[watched_idx] = 0
 
     top_indices = similarity.argsort()[::-1][:top_n]
-    results = movies.iloc[top_indices].copy()
-    results["similarity"] = similarity[top_indices]
-
-    return results
+    return movies.iloc[top_indices]
 
 # =========================
 # HEADER
@@ -132,9 +127,7 @@ def recommend_from_history(watched_titles, top_n=10):
 st.markdown("""
 <div class="card" style="text-align:center;">
     <h1>🎬 MovieVerse</h1>
-    <p style="color:#475569; font-size:15px;">
-        Modern User-Based Movie Recommendation System
-    </p>
+    <p>User Watch History Based Movie Recommendation System</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -148,20 +141,22 @@ with st.sidebar:
         movies["title"].values
     )
 
-    min_watch = 5
-    st.info("🎯 Sistem akan menampilkan **10 rekomendasi film**")
+    st.markdown("📌 **Jumlah rekomendasi ditetapkan: 10 film**")
+
+min_watch = 5
 
 # =========================
-# MAIN CONTENT
+# MAIN LOGIC
 # =========================
 if len(watched_movies) < min_watch:
     st.warning(f"⚠️ Pilih minimal **{min_watch} film** untuk mendapatkan rekomendasi")
 else:
     st.markdown("""
     <div class="card">
-        <span class="badge">PROFIL USER TERBENTUK</span>
-        <p style="margin-top:12px;">
-            Preferensi dihitung berdasarkan histori tontonan Anda
+        <span class="badge">USER PROFILE TERBENTUK</span>
+        <p style="margin-top:10px;">
+            Preferensi pengguna dihitung dari histori tontonan menggunakan
+            <b>TF-IDF</b> dan <b>Cosine Similarity</b>.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -175,12 +170,7 @@ else:
         with cols[i % 5]:
             st.markdown(f"""
             <div class="rec-card">
-                <h4 style="font-size:14px; min-height:48px;">
-                    {row['title']}
-                </h4>
-                <p style="font-size:12px; color:#64748b;">
-                    Similarity: {row['similarity']:.2f}
-                </p>
+                <h4>{row['title']}</h4>
             </div>
             """, unsafe_allow_html=True)
 
@@ -189,7 +179,7 @@ else:
 # =========================
 st.markdown("""
 <div class="footer">
-MovieVerse • User Profile Based Recommender  
-<br>TF-IDF & Cosine Similarity
+MovieVerse • Content-Based Recommender System<br>
+TF-IDF + Cosine Similarity
 </div>
 """, unsafe_allow_html=True)
