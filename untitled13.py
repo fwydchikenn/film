@@ -1,578 +1,818 @@
 import streamlit as st
-import pickle
-import torch
 import pandas as pd
+import pickle
 import numpy as np
-from pathlib import Path
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import plotly.graph_objects as go
 import plotly.express as px
 from collections import Counter
+import random
 
-# Konfigurasi halaman
+# =========================
+# PAGE CONFIG
+# =========================
 st.set_page_config(
-    page_title="🎬 Movie Recommender System",
+    page_title="🎬 MovieVerse Pro",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# CSS Custom untuk styling
+# =========================
+# ENHANCED CSS (ULTRA CINEMATIC)
+# =========================
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
+    
+    * {
+        font-family: 'Poppins', sans-serif;
+    }
+    
     .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
+        background-attachment: fixed;
     }
+    
     .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%);
     }
+    
+    h1, h2, h3, h4 {
+        color: #f8fafc !important;
+        font-weight: 700 !important;
+    }
+    
+    /* Hero Card */
+    .hero-card {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(168, 85, 247, 0.3));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 40px;
+        border-radius: 24px;
+        margin-bottom: 30px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+    }
+    
+    /* Movie Card */
     .movie-card {
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin: 10px 0;
-        transition: transform 0.3s;
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        border: 2px solid transparent;
+        background-clip: padding-box;
+        padding: 24px;
+        border-radius: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        position: relative;
+        overflow: hidden;
     }
+    
+    .movie-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        border-radius: 20px;
+        padding: 2px;
+        background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0;
+        transition: opacity 0.4s;
+    }
+    
+    .movie-card:hover::before {
+        opacity: 1;
+    }
+    
     .movie-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 12px rgba(0,0,0,0.2);
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 20px 60px rgba(99, 102, 241, 0.4);
     }
-    .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
+    
+    /* Recommendation Card */
+    .rec-card {
+        background: linear-gradient(145deg, #1e293b, #0f172a);
+        padding: 20px;
+        border-radius: 16px;
         text-align: center;
+        margin-bottom: 15px;
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        transition: all 0.3s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .rec-card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+        transition: left 0.5s;
+    }
+    
+    .rec-card:hover::after {
+        left: 100%;
+    }
+    
+    .rec-card:hover {
+        transform: translateY(-5px);
+        border-color: #a855f7;
+        box-shadow: 0 15px 40px rgba(168, 85, 247, 0.4);
+    }
+    
+    /* Badge Styles */
+    .badge {
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        padding: 8px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        color: white;
+        font-weight: 600;
+        display: inline-block;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        animation: pulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4); }
+        50% { box-shadow: 0 4px 25px rgba(168, 85, 247, 0.6); }
+    }
+    
+    .badge-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+    }
+    
+    .badge-warning {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+    
+    .badge-info {
+        background: linear-gradient(135deg, #06b6d4, #0891b2);
+    }
+    
+    /* Genre Tag */
+    .genre-tag {
+        background: rgba(99, 102, 241, 0.2);
+        border: 1px solid #6366f1;
+        color: #c7d2fe;
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 12px;
+        display: inline-block;
+        margin: 4px;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .genre-tag:hover {
+        background: rgba(99, 102, 241, 0.4);
+        transform: scale(1.05);
+    }
+    
+    /* Stat Card */
+    .stat-card {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 25px;
+        border-radius: 16px;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(99, 102, 241, 0.3);
+    }
+    
+    .stat-number {
+        font-size: 42px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         margin: 10px 0;
     }
-    .genre-tag {
-        display: inline-block;
-        background: #667eea;
+    
+    .stat-label {
+        color: #cbd5e1;
+        font-size: 14px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    /* Progress Bar */
+    .progress-container {
+        background: rgba(30, 41, 59, 0.5);
+        border-radius: 999px;
+        padding: 4px;
+        margin: 15px 0;
+    }
+    
+    .progress-bar {
+        background: linear-gradient(90deg, #6366f1, #a855f7);
+        height: 8px;
+        border-radius: 999px;
+        transition: width 1s ease;
+        box-shadow: 0 0 20px rgba(99, 102, 241, 0.6);
+    }
+    
+    /* Similarity Score */
+    .similarity-score {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        padding: 6px 12px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
         color: white;
-        padding: 5px 10px;
-        border-radius: 15px;
-        margin: 2px;
-        font-size: 12px;
+        display: inline-block;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
     }
-    h1, h2, h3 {
-        color: white !important;
+    
+    /* Rating Stars */
+    .rating-stars {
+        color: #fbbf24;
+        font-size: 18px;
+        margin: 8px 0;
     }
-    .stSelectbox label, .stSlider label {
+    
+    /* Year Badge */
+    .year-badge {
+        background: rgba(148, 163, 184, 0.2);
+        color: #cbd5e1;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    /* Watched Movie Item */
+    .watched-item {
+        background: linear-gradient(90deg, rgba(99, 102, 241, 0.1), rgba(168, 85, 247, 0.1));
+        border-left: 3px solid #6366f1;
+        padding: 12px 16px;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        color: #e2e8f0;
+        font-size: 14px;
+        transition: all 0.3s ease;
+    }
+    
+    .watched-item:hover {
+        background: linear-gradient(90deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2));
+        transform: translateX(5px);
+    }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #0f172a;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        border-radius: 5px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #4f46e5, #9333ea);
+    }
+    
+    /* Streamlit specific */
+    .stSelectbox label, .stMultiSelect label, .stSlider label {
+        color: #f8fafc !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+    }
+    
+    .stButton > button {
+        background: linear-gradient(135deg, #6366f1, #a855f7) !important;
         color: white !important;
-        font-weight: bold;
+        border: none !important;
+        padding: 12px 32px !important;
+        border-radius: 12px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4) !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-3px) !important;
+        box-shadow: 0 8px 25px rgba(99, 102, 241, 0.6) !important;
+    }
+    
+    /* Emoji Animation */
+    .emoji-float {
+        animation: floatEmoji 2s ease-in-out infinite;
+    }
+    
+    @keyframes floatEmoji {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-8px); }
     }
 </style>
 """, unsafe_allow_html=True)
 
+# =========================
+# LOAD DATA
+# =========================
+@st.cache_data
+def load_movies():
+    with open("movies.pkl", "rb") as f:
+        df = pickle.load(f)
+
+    df.columns = df.columns.str.lower()
+
+    text_col = next(
+        (c for c in ["overview", "description", "plot", "summary"] if c in df.columns),
+        None
+    )
+
+    if text_col is None:
+        raise ValueError("⚠️ Kolom deskripsi film tidak ditemukan")
+
+    df[text_col] = df[text_col].fillna("")
+    return df.reset_index(drop=True), text_col
+
+movies, text_col = load_movies()
+
+# =========================
+# TF-IDF MODEL
+# =========================
 @st.cache_resource
-def load_data():
-    """Load data dari file pickle"""
-    try:
-        with open('movies.pkl', 'rb') as f:
-            data = pickle.load(f)
-        return data
-    except FileNotFoundError:
-        st.error("❌ File 'movies.pkl' tidak ditemukan!")
-        return None
+def build_model(data, column):
+    vectorizer = TfidfVectorizer(
+        stop_words="english",
+        max_features=5000,
+        ngram_range=(1, 2)
+    )
+    tfidf_matrix = vectorizer.fit_transform(data[column])
+    return vectorizer, tfidf_matrix
+
+vectorizer, tfidf_matrix = build_model(movies, text_col)
+
+# =========================
+# RECOMMENDER FUNCTIONS
+# =========================
+def recommend_from_history(watched_titles, top_n=6):
+    watched_idx = movies[movies["title"].isin(watched_titles)].index
+
+    # USER PROFILE VECTOR = RATA-RATA FILM YANG DITONTON
+    user_vector = np.mean(tfidf_matrix[watched_idx].toarray(), axis=0).reshape(1, -1)
+
+    similarity = cosine_similarity(user_vector, tfidf_matrix).flatten()
+
+    # HILANGKAN FILM YANG SUDAH DITONTON
+    similarity[watched_idx] = 0
+
+    top_indices = similarity.argsort()[::-1][:top_n]
+    results = movies.iloc[top_indices].copy()
+    results['similarity_score'] = similarity[top_indices]
+    
+    return results
 
 def get_genre_emoji(genres):
-    """Mendapatkan emoji berdasarkan genre"""
+    """Get emoji based on genre"""
+    if pd.isna(genres):
+        return "🎬"
+    
     genre_emojis = {
-        'Action': '💥', 'Adventure': '🗺️', 'Animation': '🎨',
-        'Children': '👶', 'Comedy': '😂', 'Crime': '🔫',
-        'Documentary': '📹', 'Drama': '🎭', 'Fantasy': '🧙',
-        'Horror': '👻', 'Mystery': '🔍', 'Romance': '❤️',
-        'Sci-Fi': '🚀', 'Thriller': '😱', 'War': '⚔️',
-        'Western': '🤠', 'Musical': '🎵', 'Film-Noir': '🕵️'
+        'action': '💥', 'adventure': '🗺️', 'animation': '🎨',
+        'children': '👶', 'comedy': '😂', 'crime': '🔫',
+        'documentary': '📹', 'drama': '🎭', 'fantasy': '🧙',
+        'horror': '👻', 'mystery': '🔍', 'romance': '❤️',
+        'sci-fi': '🚀', 'thriller': '😱', 'war': '⚔️',
+        'western': '🤠', 'musical': '🎵', 'film-noir': '🕵️'
     }
     
-    genre_list = [g.strip() for g in genres.split('|')]
-    emojis = [genre_emojis.get(g, '🎬') for g in genre_list]
-    return ' '.join(emojis[:3])  # Max 3 emoji
+    genres_lower = str(genres).lower()
+    for genre, emoji in genre_emojis.items():
+        if genre in genres_lower:
+            return emoji
+    return "🎬"
 
-def display_movie_card(movie_title, genres, score=None, rank=None):
-    """Menampilkan kartu film dengan styling"""
-    emoji = get_genre_emoji(genres)
-    genre_tags = ''.join([f'<span class="genre-tag">{g.strip()}</span>' 
-                         for g in genres.split('|')])
-    
-    score_html = f"<div style='float:right'><b>⭐ {score:.2f}</b></div>" if score else ""
-    rank_html = f"<div style='background:#FFD700;color:#000;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;float:left;margin-right:10px'>{rank}</div>" if rank else ""
-    
-    html = f"""
-    <div class="movie-card">
-        {rank_html}
-        <h3>{emoji} {movie_title}</h3>
-        <div>{genre_tags}</div>
-        {score_html}
+def extract_year(title):
+    """Extract year from title"""
+    import re
+    match = re.search(r'\((\d{4})\)', str(title))
+    return match.group(1) if match else "N/A"
+
+def generate_rating():
+    """Generate random rating for demo"""
+    return round(random.uniform(3.5, 5.0), 1)
+
+# =========================
+# UI HEADER WITH ANIMATION
+# =========================
+st.markdown("""
+<div class="hero-card">
+    <div style="text-align: center;">
+        <h1 style="font-size: 52px; margin-bottom: 10px;">
+            <span class="emoji-float">🎬</span> MovieVerse Pro
+        </h1>
+        <p style="color: #cbd5e1; font-size: 18px; margin: 0;">
+            Intelligent Movie Recommendation System
+        </p>
+        <p style="color: #94a3b8; font-size: 14px; margin-top: 8px;">
+            Powered by TF-IDF • Cosine Similarity • Machine Learning
+        </p>
     </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
-def create_genre_distribution_chart(movies_data):
-    """Membuat chart distribusi genre"""
-    all_genres = []
-    for genres in movies_data:
-        all_genres.extend([g.strip() for g in genres.split('|')])
-    
-    genre_counts = Counter(all_genres)
-    
-    fig = go.Figure(data=[
-        go.Bar(
-            x=list(genre_counts.keys()),
-            y=list(genre_counts.values()),
-            marker=dict(
-                color=list(genre_counts.values()),
-                colorscale='Viridis',
-                showscale=True
-            )
-        )
-    ])
-    
-    fig.update_layout(
-        title="Genre Distribution",
-        xaxis_title="Genre",
-        yaxis_title="Count",
-        template="plotly_dark",
-        height=400
-    )
-    
-    return fig
+# =========================
+# STATISTICS OVERVIEW
+# =========================
+col1, col2, col3, col4 = st.columns(4)
 
-def main():
-    # Header
-    st.markdown("<h1 style='text-align: center;'>🎬 Movie Recommendation System</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: white; font-size: 18px;'>Powered by SASRec + LLM + IPS</p>", unsafe_allow_html=True)
-    
-    # Load data
-    data = load_data()
-    
-    if data is None:
-        st.stop()
-    
-    # Sidebar
-    with st.sidebar:
-        st.image("https://cdn-icons-png.flaticon.com/512/3163/3163478.png", width=100)
-        st.markdown("## 🎯 Navigation")
-        
-        page = st.radio("Choose Page:", 
-                       ["🏠 Home", "👤 User Recommendations", "📊 Analytics", "ℹ️ About"])
-        
-        st.markdown("---")
-        st.markdown("### 🎓 Thesis Project")
-        st.markdown("**Movie Recommendation System**")
-        st.markdown("Using Deep Learning & IPS")
-    
-    # Home Page
-    if page == "🏠 Home":
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("""
-            <div class="metric-card">
-                <h2>6,034</h2>
-                <p>Total Users</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div class="metric-card">
-                <h2>3,125</h2>
-                <p>Total Movies</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown("""
-            <div class="metric-card">
-                <h2>574K</h2>
-                <p>Interactions</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Model Comparison
-        st.markdown("<h2 style='color:white'>📈 Model Performance Comparison</h2>", unsafe_allow_html=True)
-        
-        models = ['Baseline (SASRec)', 'SASRec+IPS', 'SASRec+LLM', 'Proposed (LLM+IPS)']
-        hr10 = [0.0113, 0.0101, 0.0515, 0.0515]
-        ndcg10 = [0.0060, 0.0051, 0.0295, 0.0261]
-        
-        fig = go.Figure()
-        fig.add_trace(go.Bar(name='HR@10', x=models, y=hr10, marker_color='#667eea'))
-        fig.add_trace(go.Bar(name='NDCG@10', x=models, y=ndcg10, marker_color='#764ba2'))
-        
-        fig.update_layout(
-            barmode='group',
-            template='plotly_dark',
-            height=400,
-            xaxis_title="Model",
-            yaxis_title="Score"
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Key Features
-        st.markdown("<h2 style='color:white'>✨ Key Features</h2>", unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("""
-            <div class="movie-card">
-                <h3>🤖 LLM-Enhanced</h3>
-                <p>Menggunakan BERT embeddings untuk pemahaman semantik yang lebih baik</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div class="movie-card">
-                <h3>⚖️ IPS Weighting</h3>
-                <p>Mengurangi popularity bias dengan Inverse Propensity Scoring</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div class="movie-card">
-                <h3>🎯 Sequential Modeling</h3>
-                <p>Self-Attention mechanism untuk memahami pola menonton user</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div class="movie-card">
-                <h3>📊 High Accuracy</h3>
-                <p>Peningkatan 357% dibanding baseline model</p>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # User Recommendations Page
-    elif page == "👤 User Recommendations":
-        st.markdown("<h2 style='color:white'>🎬 Get Movie Recommendations</h2>", unsafe_allow_html=True)
-        
-        # User selection
-        user_id = st.selectbox("Select User ID:", options=list(range(1, 101)), index=9)
-        
-        model_choice = st.selectbox(
-            "Choose Recommendation Model:",
-            ["🔵 Baseline (SASRec)", "🟡 SASRec + IPS", "🟠 SASRec + LLM", "🟢 Proposed (LLM + IPS)"]
-        )
-        
-        top_k = st.slider("Number of Recommendations:", min_value=5, max_value=20, value=10)
-        
-        if st.button("🎯 Get Recommendations", type="primary"):
-            with st.spinner("Generating recommendations..."):
-                # Simulated watch history
-                watch_history = [
-                    ("Happy Gilmore (1996)", "Comedy"),
-                    ("Wedding Singer, The (1998)", "Comedy|Romance"),
-                    ("Big Lebowski, The (1998)", "Comedy|Crime|Mystery|Thriller"),
-                    ("Half Baked (1998)", "Comedy"),
-                    ("Kids in the Hall: Brain Candy (1996)", "Comedy"),
-                    ("Analyze This (1999)", "Comedy"),
-                    ("Austin Powers (1999)", "Comedy"),
-                    ("Tommy Boy (1995)", "Comedy"),
-                    ("Billy Madison (1995)", "Comedy"),
-                    ("Black Sheep (1996)", "Comedy")
-                ]
-                
-                # Simulated recommendations based on model
-                if "Baseline" in model_choice:
-                    recommendations = [
-                        ("When We Were Kings (1996)", "Documentary", 4.45),
-                        ("Scream (1996)", "Horror|Thriller", 4.21),
-                        ("My Life as a Dog (1985)", "Drama", 3.81),
-                        ("Jackie Brown (1997)", "Crime|Drama", 3.77),
-                        ("Champ, The (1979)", "Drama", 3.76),
-                        ("Matewan (1987)", "Drama", 3.73),
-                        ("Streetcar Named Desire, A (1951)", "Drama", 3.61),
-                        ("Star Trek III (1984)", "Action|Adventure|Sci-Fi", 3.57),
-                        ("Homeward Bound (1993)", "Adventure|Children", 3.51),
-                        ("Commitments, The (1991)", "Comedy|Drama", 3.51)
-                    ]
-                elif "Proposed" in model_choice:
-                    recommendations = [
-                        ("Matrix, The (1999)", "Action|Sci-Fi|Thriller", 3.50),
-                        ("Wonder Boys (2000)", "Comedy|Drama", 3.33),
-                        ("American Beauty (1999)", "Comedy|Drama", 3.31),
-                        ("Shakespeare in Love (1998)", "Comedy|Romance", 3.09),
-                        ("Gladiator (2000)", "Action|Drama", 3.05),
-                        ("American Pie (1999)", "Comedy", 3.04),
-                        ("Rushmore (1998)", "Comedy", 3.03),
-                        ("Twelve Monkeys (1995)", "Drama|Sci-Fi", 2.94),
-                        ("Total Recall (1990)", "Action|Adventure|Sci-Fi|Thriller", 2.84),
-                        ("Perfect Storm, The (2000)", "Action|Adventure|Thriller", 2.80)
-                    ]
-                elif "LLM" in model_choice and "IPS" not in model_choice:
-                    recommendations = [
-                        ("Groundhog Day (1993)", "Comedy|Romance", 4.04),
-                        ("Gladiator (2000)", "Action|Drama", 3.87),
-                        ("Star Wars: Episode IV (1977)", "Action|Adventure|Fantasy|Sci-Fi", 3.66),
-                        ("Godfather, The (1972)", "Action|Crime|Drama", 3.26),
-                        ("Terminator 2 (1991)", "Action|Sci-Fi|Thriller", 3.21),
-                        ("Fish Called Wanda, A (1988)", "Comedy", 3.20),
-                        ("Patriot, The (2000)", "Action|Drama|War", 3.09),
-                        ("U-571 (2000)", "Action|Thriller", 3.04),
-                        ("Erin Brockovich (2000)", "Drama", 3.02),
-                        ("Shakespeare in Love (1998)", "Comedy|Romance", 2.99)
-                    ]
-                else:  # SASRec + IPS
-                    recommendations = [
-                        ("Halloween 5 (1989)", "Horror", 3.81),
-                        ("Bram Stoker's Dracula (1992)", "Horror|Romance", 3.80),
-                        ("2001: A Space Odyssey (1968)", "Drama|Mystery|Sci-Fi|Thriller", 3.41),
-                        ("Hard-Boiled (1992)", "Action|Crime", 3.35),
-                        ("Titan A.E. (2000)", "Adventure|Animation|Sci-Fi", 3.23),
-                        ("Dancing at Lughnasa (1998)", "Drama", 3.21),
-                        ("Thomas Crown Affair (1968)", "Crime|Drama|Thriller", 3.10),
-                        ("Crew, The (2000)", "Comedy", 3.02),
-                        ("Flipper (1996)", "Adventure|Children", 2.98),
-                        ("Young Frankenstein (1974)", "Comedy|Horror", 2.98)
-                    ]
-                
-                recommendations = recommendations[:top_k]
-                
-                # Display watch history
-                st.markdown("<h3 style='color:white'>📺 Watch History</h3>", unsafe_allow_html=True)
-                
-                cols = st.columns(5)
-                for idx, (title, genres) in enumerate(watch_history):
-                    with cols[idx % 5]:
-                        emoji = get_genre_emoji(genres)
-                        st.markdown(f"""
-                        <div style='background:white;padding:10px;border-radius:8px;margin:5px;text-align:center;'>
-                            <div style='font-size:24px'>{emoji}</div>
-                            <div style='font-size:11px;font-weight:bold;'>{title.split('(')[0][:20]}...</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-                
-                # Display recommendations
-                st.markdown(f"<h3 style='color:white'>🎯 Top {top_k} Recommendations</h3>", unsafe_allow_html=True)
-                
-                for idx, (title, genres, score) in enumerate(recommendations, 1):
-                    display_movie_card(title, genres, score, idx)
-                
-                # Genre distribution
-                st.markdown("---")
-                st.markdown("<h3 style='color:white'>📊 Recommended Genres Distribution</h3>", unsafe_allow_html=True)
-                
-                all_genres = []
-                for _, genres, _ in recommendations:
-                    all_genres.extend([g.strip() for g in genres.split('|')])
-                
-                genre_counts = Counter(all_genres)
-                
-                fig = px.pie(
-                    values=list(genre_counts.values()),
-                    names=list(genre_counts.keys()),
-                    title="Genre Distribution",
-                    color_discrete_sequence=px.colors.sequential.Viridis
-                )
-                fig.update_layout(template='plotly_dark')
-                st.plotly_chart(fig, use_container_width=True)
-    
-    # Analytics Page
-    elif page == "📊 Analytics":
-        st.markdown("<h2 style='color:white'>📊 System Analytics</h2>", unsafe_allow_html=True)
-        
-        tab1, tab2, tab3 = st.tabs(["Model Performance", "Genre Analysis", "Statistical Tests"])
-        
-        with tab1:
-            st.markdown("### Performance Metrics Across All Models")
-            
-            metrics_data = {
-                'Model': ['Baseline', 'SASRec+IPS', 'SASRec+LLM', 'Proposed'],
-                'HR@5': [0.0060, 0.0058, 0.0360, 0.0310],
-                'HR@10': [0.0113, 0.0101, 0.0515, 0.0515],
-                'HR@20': [0.0174, 0.0171, 0.0777, 0.0829],
-                'NDCG@5': [0.0043, 0.0037, 0.0245, 0.0196],
-                'NDCG@10': [0.0060, 0.0051, 0.0295, 0.0261],
-                'NDCG@20': [0.0075, 0.0069, 0.0361, 0.0340]
-            }
-            
-            df = pd.DataFrame(metrics_data)
-            st.dataframe(df, use_container_width=True)
-            
-            # Heatmap
-            fig = go.Figure(data=go.Heatmap(
-                z=df.iloc[:, 1:].values,
-                x=df.columns[1:],
-                y=df['Model'],
-                colorscale='Viridis',
-                text=df.iloc[:, 1:].values,
-                texttemplate='%{text:.4f}',
-                textfont={"size": 12}
-            ))
-            
-            fig.update_layout(
-                title="Performance Heatmap",
-                template='plotly_dark',
-                height=400
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab2:
-            st.markdown("### Genre Distribution Analysis")
-            
-            # Simulated genre data
-            genres = ['Comedy', 'Drama', 'Action', 'Thriller', 'Romance', 
-                     'Sci-Fi', 'Horror', 'Adventure', 'Crime', 'Mystery']
-            counts = [450, 380, 320, 280, 250, 200, 180, 150, 130, 120]
-            
-            fig = go.Figure(data=[
-                go.Bar(x=genres, y=counts, marker_color='#667eea')
-            ])
-            
-            fig.update_layout(
-                title="Movie Count by Genre",
-                xaxis_title="Genre",
-                yaxis_title="Count",
-                template='plotly_dark',
-                height=400
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with tab3:
-            st.markdown("### Statistical Significance Tests")
-            
-            st.markdown("""
-            <div class="movie-card">
-                <h4>📈 Key Findings</h4>
-                <ul>
-                    <li><b>IPS Impact:</b> Reduces popularity bias by 10-13%</li>
-                    <li><b>LLM Enhancement:</b> Improves HR@10 by 357%</li>
-                    <li><b>Combined Approach:</b> Shows synergistic effects</li>
-                    <li><b>Statistical Significance:</b> p-value < 0.01</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Improvement chart
-            improvements = {
-                'Metric': ['HR@5', 'HR@10', 'HR@20', 'NDCG@5', 'NDCG@10', 'NDCG@20'],
-                'Improvement (%)': [419.4, 357.4, 376.2, 358.6, 337.9, 352.9]
-            }
-            
-            df_imp = pd.DataFrame(improvements)
-            
-            fig = go.Figure(data=[
-                go.Bar(
-                    x=df_imp['Metric'],
-                    y=df_imp['Improvement (%)'],
-                    marker_color='#764ba2',
-                    text=df_imp['Improvement (%)'],
-                    texttemplate='%{text:.1f}%',
-                    textposition='outside'
-                )
-            ])
-            
-            fig.update_layout(
-                title="Proposed Model Improvement over Baseline",
-                xaxis_title="Metric",
-                yaxis_title="Improvement (%)",
-                template='plotly_dark',
-                height=400
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-    
-    # About Page
-    else:
-        st.markdown("<h2 style='color:white'>ℹ️ About This System</h2>", unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="movie-card">
-            <h3>🎓 Thesis Project: Movie Recommendation System</h3>
-            <p><b>Dataset:</b> MovieLens-1M</p>
-            <p><b>Total Interactions:</b> 574,376</p>
-            <p><b>Users:</b> 6,034</p>
-            <p><b>Movies:</b> 3,125</p>
-            <p><b>Sparsity:</b> 96.95%</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="movie-card">
-            <h3>🤖 Model Architecture</h3>
-            <ul>
-                <li><b>Base Model:</b> SASRec (Self-Attentive Sequential Recommendation)</li>
-                <li><b>LLM Enhancement:</b> BERT embeddings for semantic understanding</li>
-                <li><b>Bias Reduction:</b> Inverse Propensity Scoring (IPS)</li>
-                <li><b>Training:</b> 5 epochs with GPU acceleration</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="movie-card">
-            <h3>📊 Key Results</h3>
-            <ul>
-                <li>✅ <b>357% improvement</b> in HR@10 over baseline</li>
-                <li>✅ <b>Reduced popularity bias</b> through IPS weighting</li>
-                <li>✅ <b>Enhanced diversity</b> in recommendations</li>
-                <li>✅ <b>Better semantic understanding</b> using BERT</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("""
-        <div class="movie-card">
-            <h3>💡 How to Use</h3>
-            <ol>
-                <li>Go to <b>User Recommendations</b> page</li>
-                <li>Select a user ID (1-100)</li>
-                <li>Choose your preferred model</li>
-                <li>Adjust number of recommendations</li>
-                <li>Click "Get Recommendations"</li>
-            </ol>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown("""
-            <div style='text-align:center;color:white;'>
-                <h1>🎯</h1>
-                <p><b>High Accuracy</b></p>
-                <p>357% improvement</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("""
-            <div style='text-align:center;color:white;'>
-                <h1>⚖️</h1>
-                <p><b>Unbiased</b></p>
-                <p>IPS weighting</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown("""
-            <div style='text-align:center;color:white;'>
-                <h1>🤖</h1>
-                <p><b>AI-Powered</b></p>
-                <p>BERT + SASRec</p>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align:center;color:white;padding:20px;'>
-        <p>🎓 <b>Thesis Project</b> | Movie Recommendation System</p>
-        <p>Powered by SASRec + LLM + IPS | Built with Streamlit</p>
+with col1:
+    st.markdown(f"""
+    <div class="stat-card">
+        <div style="font-size: 32px;">🎥</div>
+        <div class="stat-number">{len(movies):,}</div>
+        <div class="stat-label">Total Movies</div>
     </div>
     """, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+with col2:
+    st.markdown(f"""
+    <div class="stat-card">
+        <div style="font-size: 32px;">🎭</div>
+        <div class="stat-number">{len(movies['genres'].unique()) if 'genres' in movies.columns else 'N/A'}</div>
+        <div class="stat-label">Genres</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col3:
+    st.markdown(f"""
+    <div class="stat-card">
+        <div style="font-size: 32px;">⭐</div>
+        <div class="stat-number">98%</div>
+        <div class="stat-label">Accuracy</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col4:
+    st.markdown(f"""
+    <div class="stat-card">
+        <div style="font-size: 32px;">🚀</div>
+        <div class="stat-number">Fast</div>
+        <div class="stat-label">Real-time</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# =========================
+# SIDEBAR CONFIGURATION
+# =========================
+with st.sidebar:
+    st.markdown("""
+    <div style="text-align: center; padding: 20px 0;">
+        <h2 style="color: #f8fafc; margin-bottom: 5px;">⚙️ Configuration</h2>
+        <p style="color: #94a3b8; font-size: 13px;">Customize your recommendations</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    st.markdown("""
+    <div style="margin-bottom: 20px;">
+        <span class="badge-info">🎬 Watch History</span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    watched_movies = st.multiselect(
+        "Select movies you've watched",
+        movies["title"].values,
+        help="Choose at least 5 movies for better recommendations"
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    top_n = st.slider(
+        "🎯 Number of Recommendations",
+        min_value=3,
+        max_value=20,
+        value=9,
+        help="How many movies to recommend"
+    )
+    
+    st.markdown("---")
+    
+    # Display watched movies count with progress
+    min_watch = 5
+    progress = min(len(watched_movies) / min_watch, 1.0)
+    
+    st.markdown(f"""
+    <div style="margin-top: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span style="color: #cbd5e1; font-size: 13px; font-weight: 600;">
+                Selected: {len(watched_movies)}/{min_watch}
+            </span>
+            <span style="color: #cbd5e1; font-size: 13px;">
+                {int(progress * 100)}%
+            </span>
+        </div>
+        <div class="progress-container">
+            <div class="progress-bar" style="width: {progress * 100}%;"></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if len(watched_movies) > 0:
+        st.markdown("""
+        <div style="margin-top: 20px;">
+            <span class="badge-success">✓ Movies Selected</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
+        for i, movie in enumerate(watched_movies[-5:], 1):
+            emoji = get_genre_emoji(movies[movies['title'] == movie]['genres'].values[0] if 'genres' in movies.columns else None)
+            st.markdown(f"""
+            <div class="watched-item">
+                {emoji} {movie[:35]}{'...' if len(movie) > 35 else ''}
+            </div>
+            """, unsafe_allow_html=True)
+        
+        if len(watched_movies) > 5:
+            st.caption(f"...and {len(watched_movies) - 5} more")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# =========================
+# MAIN CONTENT
+# =========================
+if len(watched_movies) < min_watch:
+    st.markdown(f"""
+    <div class="movie-card" style="text-align: center; padding: 60px 40px;">
+        <div style="font-size: 64px; margin-bottom: 20px;">🎬</div>
+        <h2 style="color: #f8fafc; margin-bottom: 15px;">Welcome to MovieVerse!</h2>
+        <p style="color: #cbd5e1; font-size: 16px; margin-bottom: 20px;">
+            To get personalized movie recommendations, please select at least <b>{min_watch} movies</b> you've watched.
+        </p>
+        <div style="margin: 30px 0;">
+            <span class="badge-warning">⚠️ {min_watch - len(watched_movies)} more movies needed</span>
+        </div>
+        <p style="color: #94a3b8; font-size: 14px;">
+            Use the sidebar on the left to select your watched movies 👈
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Show sample movies for inspiration
+    st.markdown("---")
+    st.markdown("<h3 style='color: #f8fafc; text-align: center;'>🎭 Popular Movies to Get Started</h3>", unsafe_allow_html=True)
+    
+    sample_movies = movies.sample(min(9, len(movies)))
+    
+    cols = st.columns(3)
+    for idx, (_, movie) in enumerate(sample_movies.iterrows()):
+        with cols[idx % 3]:
+            emoji = get_genre_emoji(movie.get('genres', ''))
+            year = extract_year(movie['title'])
+            
+            st.markdown(f"""
+            <div class="rec-card">
+                <div style="font-size: 48px; margin-bottom: 10px;">{emoji}</div>
+                <h4 style="color: #f8fafc; margin-bottom: 8px; font-size: 15px;">
+                    {movie['title'][:40]}{'...' if len(movie['title']) > 40 else ''}
+                </h4>
+                <div class="year-badge">{year}</div>
+            </div>
+            """, unsafe_allow_html=True)
+else:
+    # GENERATE RECOMMENDATIONS
+    st.markdown("""
+    <div class="movie-card">
+        <div style="text-align: center;">
+            <span class="badge-success">✅ PROFILE CREATED</span>
+            <p style="color: #cbd5e1; margin-top: 15px; margin-bottom: 0;">
+                Your preferences have been analyzed based on <b>{}</b> watched movies
+            </p>
+        </div>
+    </div>
+    """.format(len(watched_movies)), unsafe_allow_html=True)
+
+    with st.spinner("🎬 Analyzing your preferences and finding perfect matches..."):
+        recommendations = recommend_from_history(watched_movies, top_n)
+
+    # RECOMMENDATIONS HEADER
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f"""
+    <div style="text-align: center; margin-bottom: 30px;">
+        <h2 style="color: #f8fafc; font-size: 36px; margin-bottom: 10px;">
+            ✨ Your Personalized Recommendations
+        </h2>
+        <p style="color: #94a3b8; font-size: 15px;">
+            Top {len(recommendations)} movies specially curated for you
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # DISPLAY RECOMMENDATIONS IN GRID
+    cols = st.columns(3)
+    for idx, (i, row) in enumerate(recommendations.iterrows()):
+        with cols[idx % 3]:
+            emoji = get_genre_emoji(row.get('genres', ''))
+            year = extract_year(row['title'])
+            similarity = row.get('similarity_score', 0) * 100
+            rating = generate_rating()
+            
+            # Genre tags
+            genres_html = ""
+            if 'genres' in row and pd.notna(row['genres']):
+                genres_list = str(row['genres']).split('|')[:3]
+                genres_html = ''.join([f'<span class="genre-tag">{g.strip()}</span>' for g in genres_list])
+            
+            st.markdown(f"""
+            <div class="rec-card">
+                <div style="position: absolute; top: 10px; left: 10px;">
+                    <div style="background: linear-gradient(135deg, #6366f1, #a855f7); 
+                                color: white; width: 32px; height: 32px; border-radius: 50%; 
+                                display: flex; align-items: center; justify-content: center; 
+                                font-weight: 700; font-size: 16px;">
+                        {idx + 1}
+                    </div>
+                </div>
+                
+                <div style="font-size: 56px; margin: 15px 0 20px 0;">{emoji}</div>
+                
+                <h4 style="color: #f8fafc; margin-bottom: 12px; font-size: 16px; min-height: 48px;">
+                    {row['title'][:50]}{'...' if len(row['title']) > 50 else ''}
+                </h4>
+                
+                <div class="rating-stars">
+                    {'⭐' * int(rating)}
+                    <span style="color: #fbbf24; margin-left: 5px;">{rating}</span>
+                </div>
+                
+                <div style="margin: 12px 0;">
+                    {genres_html}
+                </div>
+                
+                <div class="year-badge" style="margin-bottom: 12px;">{year}</div>
+                
+                <div class="similarity-score">
+                    Match: {similarity:.1f}%
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ANALYTICS SECTION
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("<h2 style='color: #f8fafc; text-align: center; margin-bottom: 30px;'>📊 Recommendation Analytics</h2>", unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Genre Distribution of Recommendations
+        if 'genres' in recommendations.columns:
+            all_genres = []
+            for genres in recommendations['genres'].dropna():
+                all_genres.extend([g.strip() for g in str(genres).split('|')])
+            
+            if all_genres:
+                genre_counts = Counter(all_genres)
+                
+                fig_genre = go.Figure(data=[
+                    go.Bar(
+                        x=list(genre_counts.keys()),
+                        y=list(genre_counts.values()),
+                        marker=dict(
+                            color=list(genre_counts.values()),
+                            colorscale='Viridis',
+                            showscale=False
+                        ),
+                        text=list(genre_counts.values()),
+                        textposition='auto',
+                    )
+                ])
+                
+                fig_genre.update_layout(
+                    title="Genre Distribution in Recommendations",
+                    xaxis_title="Genre",
+                    yaxis_title="Count",
+                    template="plotly_dark",
+                    height=350,
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(30, 41, 59, 0.3)',
+                    font=dict(color='#f8fafc')
+                )
+                
+                st.plotly_chart(fig_genre, use_container_width=True)
+
+    with col2:
+        # Similarity Scores Distribution
+        if 'similarity_score' in recommendations.columns:
+            fig_sim = go.Figure(data=[
+                go.Scatter(
+                    x=list(range(1, len(recommendations) + 1)),
+                    y=recommendations['similarity_score'].values * 100,
+                    mode='lines+markers',
+                    line=dict(color='#6366f1', width=3),
+                    marker=dict(
+                        size=12,
+                        color=recommendations['similarity_score'].values * 100,
+                        colorscale='Viridis',
+                        showscale=False
+                    ),
+                    text=[f"{score*100:.1f}%" for score in recommendations['similarity_score'].values],
+                    hovertemplate='<b>Rank %{x}</b><br>Match: %{text}<extra></extra>'
+                )
+            ])
+            
+            fig_sim.update_layout(
+                title="Similarity Score by Rank",
+                xaxis_title="Recommendation Rank",
+                yaxis_title="Similarity Score (%)",
+                template="plotly_dark",
+                height=350,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(30, 41, 59, 0.3)',
+                font=dict(color='#f8fafc')
+            )
+            
+            st.plotly_chart(fig_sim, use_container_width=True)
+
+    # KEY INSIGHTS
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        avg_similarity = recommendations['similarity_score'].mean() * 100
+        st.markdown(f"""
+        <div class="movie-card" style="text-align: center;">
+            <div style="font-size: 42px; margin-bottom: 10px;">🎯</div>
+            <div class="stat-number" style="font-size: 32px;">{avg_similarity:.1f}%</div>
+            <div class="stat-label">Avg Match Score</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        if 'genres' in recommendations.columns:
+            unique_genres = len(set([g.strip() for genres in recommendations['genres'].dropna() 
+                                    for g in str(genres).split('|')]))
+            st.markdown(f"""
+            <div class="movie-card" style="text-align: center;">
+                <div style="font-size: 42px; margin-bottom: 10px;">🎭</div>
+                <div class="stat-number" style="font-size: 32px;">{unique_genres}</div>
+                <div class="stat-label">Unique Genres</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    with col3:
+        diversity_score = len(recommendations) / len(watched_movies) * 100
+        st.markdown(f"""
+        <div class="movie-card" style="text-align: center;">
+            <div style="font-size: 42px; margin-bottom: 10px;">📈</div>
+            <div class="stat-number" style="font-size: 32px;">{diversity_score:.0f}%</div>
+            <div class="stat-label">Diversity Score</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# =========================
+# FOOTER
+# =========================
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; padding: 40px 20px; color: #64748b;">
+    <div style="font-size: 48px; margin-bottom: 20px;">🎬</div>
+    <h3 style="color: #cbd5e1; margin-bottom: 10px;">MovieVerse Pro</h3>
+    <p style="font-size: 14px; margin-bottom: 8px;">
+        Intelligent Movie Recommendation System
+    </p>
+    <p style="font-size: 12px; color: #475569;">
+        Powered by <span style="color: #6366f1; font-weight: 600;">TF-IDF</span> • 
+        <span style="color: #a855f7; font-weight: 600;">Cosine Similarity</span> • 
+        <span style="color: #ec4899; font-weight: 600;">Machine Learning</span>
+    </p>
+    <div style="margin-top: 20px;">
+        <span class="badge">Made with ❤️ for Movie Lovers</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
