@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import pickle
+import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -14,54 +15,32 @@ st.set_page_config(
 )
 
 # =========================
-# MODERN CSS
+# CSS (CINEMATIC)
 # =========================
 st.markdown("""
 <style>
-body {
-    background-color: #0b0f19;
-}
-.main {
-    background-color: #0b0f19;
-}
-h1, h2, h3, h4 {
-    color: #f9fafb;
-}
-p, label {
-    color: #cbd5e1;
-}
+body { background-color: #0b0f19; }
+.main { background-color: #0b0f19; }
+h1, h2, h3 { color: #f8fafc; }
 .card {
-    background: linear-gradient(145deg, #020617, #020617);
+    background: #020617;
+    padding: 22px;
     border-radius: 18px;
-    padding: 20px;
-    box-shadow: 0px 15px 30px rgba(0,0,0,0.5);
     margin-bottom: 20px;
-}
-.badge {
-    display: inline-block;
-    background: linear-gradient(135deg, #6366f1, #a855f7);
-    color: white;
-    padding: 6px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    margin-bottom: 10px;
+    box-shadow: 0px 12px 30px rgba(0,0,0,0.5);
 }
 .rec-card {
     background: #020617;
     padding: 16px;
     border-radius: 14px;
     text-align: center;
-    transition: 0.3s;
 }
-.rec-card:hover {
-    transform: translateY(-6px);
-    box-shadow: 0px 12px 25px rgba(99,102,241,0.4);
-}
-.footer {
-    text-align: center;
-    color: #64748b;
-    margin-top: 60px;
-    font-size: 13px;
+.badge {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    color: white;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -76,11 +55,10 @@ def load_movies():
 
     df.columns = df.columns.str.lower()
 
-    text_col = None
-    for col in ["overview", "description", "plot", "summary"]:
-        if col in df.columns:
-            text_col = col
-            break
+    text_col = next(
+        (c for c in ["overview", "description", "plot", "summary"] if c in df.columns),
+        None
+    )
 
     if text_col is None:
         raise ValueError("Kolom deskripsi film tidak ditemukan")
@@ -91,66 +69,71 @@ def load_movies():
 movies, text_col = load_movies()
 
 # =========================
-# TF-IDF SIMILARITY
+# TF-IDF MODEL
 # =========================
 @st.cache_resource
-def build_similarity(data, column):
+def build_model(data, column):
     vectorizer = TfidfVectorizer(
         stop_words="english",
         max_features=5000
     )
-    matrix = vectorizer.fit_transform(data[column])
-    return cosine_similarity(matrix)
+    tfidf_matrix = vectorizer.fit_transform(data[column])
+    return vectorizer, tfidf_matrix
 
-similarity_matrix = build_similarity(movies, text_col)
-
-# =========================
-# RECOMMEND FUNCTION
-# =========================
-def recommend(title, n=6):
-    idx = movies[movies["title"] == title].index[0]
-    scores = list(enumerate(similarity_matrix[idx]))
-    scores = sorted(scores, key=lambda x: x[1], reverse=True)[1:n+1]
-    return movies.iloc[[i[0] for i in scores]]
+vectorizer, tfidf_matrix = build_model(movies, text_col)
 
 # =========================
-# HEADER
+# RECOMMENDER (USER PROFILE)
 # =========================
-st.markdown("""
-<h1>🎬 MovieVerse</h1>
-<p>Discover movies through intelligent content-based recommendations</p>
-""", unsafe_allow_html=True)
+def recommend_from_history(watched_titles, top_n=6):
+    watched_idx = movies[movies["title"].isin(watched_titles)].index
+
+    # USER PROFILE VECTOR = RATA-RATA FILM YANG DITONTON
+    user_vector = np.mean(tfidf_matrix[watched_idx].toarray(), axis=0).reshape(1, -1)
+
+    similarity = cosine_similarity(user_vector, tfidf_matrix).flatten()
+
+    # HILANGKAN FILM YANG SUDAH DITONTON
+    similarity[watched_idx] = 0
+
+    top_indices = similarity.argsort()[::-1][:top_n]
+    return movies.iloc[top_indices]
+
+# =========================
+# UI HEADER
+# =========================
+st.markdown("<h1>🎬 MovieVerse</h1>", unsafe_allow_html=True)
+st.caption("User Watch History Based Recommendation")
 
 # =========================
 # SIDEBAR
 # =========================
 with st.sidebar:
-    st.header("⚙️ Settings")
-    selected_movie = st.selectbox(
-        "🎥 Pilih Film Favorit",
+    st.header("🎥 Film yang Pernah Ditonton")
+    watched_movies = st.multiselect(
+        "Pilih minimal 5–10 film",
         movies["title"].values
     )
+
+    min_watch = 5
     top_n = st.slider("Jumlah Rekomendasi", 3, 12, 6)
 
 # =========================
-# MAIN CONTENT
+# MAIN LOGIC
 # =========================
-if selected_movie:
-    movie_data = movies[movies["title"] == selected_movie].iloc[0]
-
-    # SELECTED MOVIE CARD
-    st.markdown(f"""
+if len(watched_movies) < min_watch:
+    st.warning(f"⚠️ Pilih minimal **{min_watch} film** untuk mendapatkan rekomendasi")
+else:
+    st.markdown("""
     <div class="card">
-        <span class="badge">FILM DIPILIH</span>
-        <h2>{movie_data['title']}</h2>
-        <p>{movie_data[text_col][:500]}...</p>
+        <span class="badge">PROFIL USER TERBENTUK</span>
+        <p>Preferensi dihitung dari histori tontonan Anda</p>
     </div>
     """, unsafe_allow_html=True)
 
-    # RECOMMENDATIONS
-    st.subheader("✨ Rekomendasi Film Serupa")
+    recommendations = recommend_from_history(watched_movies, top_n)
 
-    recommendations = recommend(selected_movie, top_n)
+    st.subheader("✨ Rekomendasi Film Untuk Anda")
 
     cols = st.columns(3)
     for i, row in recommendations.iterrows():
@@ -165,8 +148,8 @@ if selected_movie:
 # FOOTER
 # =========================
 st.markdown("""
-<div class="footer">
-🚀 MovieVerse • Content-Based Recommender System  
-<br>TF-IDF & Cosine Similarity
+<div style="text-align:center;color:#64748b;margin-top:60px;">
+MovieVerse • User Profile Based Recommender<br>
+TF-IDF + Cosine Similarity
 </div>
 """, unsafe_allow_html=True)
