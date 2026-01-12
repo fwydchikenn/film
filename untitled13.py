@@ -171,30 +171,41 @@ else:
     """, unsafe_allow_html=True)
 
     recommendations = recommend_from_history(watched_movies, top_n=10)
+    recommendations = recommendations.head(10)
 
     st.subheader("✨ 10 Rekomendasi Film Untuk Anda")
 
-    # ===== GRID RAPI (4 KOLOM) =====
-    cols_per_row = 4
-    rows = [
-        recommendations.iloc[i:i + cols_per_row]
-        for i in range(0, len(recommendations), cols_per_row)
-    ]
+    # ===== ROW 1 =====
+    cols = st.columns(5)
+    for i in range(5):
+        movie = recommendations.iloc[i]
+        with cols[i]:
+            st.markdown(f"""
+            <div class="rec-card">
+                <h4 style="font-size:14px; min-height:48px; margin-bottom:8px;">
+                    {movie['title']}
+                </h4>
+                <p style="font-size:12px; color:#64748b; margin:0;">
+                    Similarity: {movie['similarity']:.2f}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
-    for row in rows:
-        cols = st.columns(cols_per_row)
-        for col, (_, movie) in zip(cols, row.iterrows()):
-            with col:
-                st.markdown(f"""
-                <div class="rec-card">
-                    <h4 style="font-size:14px; min-height:48px; margin-bottom:8px;">
-                        {movie['title']}
-                    </h4>
-                    <p style="font-size:12px; color:#64748b; margin:0;">
-                        Similarity: {movie['similarity']:.2f}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+    # ===== ROW 2 =====
+    cols = st.columns(5)
+    for i in range(5, 10):
+        movie = recommendations.iloc[i]
+        with cols[i - 5]:
+            st.markdown(f"""
+            <div class="rec-card">
+                <h4 style="font-size:14px; min-height:48px; margin-bottom:8px;">
+                    {movie['title']}
+                </h4>
+                <p style="font-size:12px; color:#64748b; margin:0;">
+                    Similarity: {movie['similarity']:.2f}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
 # =========================
 # FOOTER
