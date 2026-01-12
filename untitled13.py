@@ -155,10 +155,14 @@ with st.sidebar:
     min_watch = 5
     st.info("🎯 Sistem menampilkan **10 rekomendasi film**")
 
+    generate_btn = st.button("✨ Tampilkan Rekomendasi")
+
 # =========================
 # MAIN CONTENT
 # =========================
-if len(watched_movies) < min_watch:
+if not generate_btn:
+    st.info("👉 Pilih histori tontonan lalu klik **Tampilkan Rekomendasi**")
+elif len(watched_movies) < min_watch:
     st.warning(f"⚠️ Pilih minimal **{min_watch} film** untuk mendapatkan rekomendasi")
 else:
     st.markdown("""
