@@ -43,6 +43,10 @@ h1, h2, h3 {
     text-align: center;
     box-shadow: 0px 6px 18px rgba(15, 23, 42, 0.08);
     transition: 0.3s ease;
+    min-height: 130px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
 }
 .rec-card:hover {
     transform: translateY(-6px);
@@ -149,7 +153,7 @@ with st.sidebar:
     )
 
     min_watch = 5
-    st.info("🎯 Sistem akan menampilkan **10 rekomendasi film**")
+    st.info("🎯 Sistem menampilkan **10 rekomendasi film**")
 
 # =========================
 # MAIN CONTENT
@@ -170,19 +174,27 @@ else:
 
     st.subheader("✨ 10 Rekomendasi Film Untuk Anda")
 
-    cols = st.columns(5)
-    for i, row in recommendations.iterrows():
-        with cols[i % 5]:
-            st.markdown(f"""
-            <div class="rec-card">
-                <h4 style="font-size:14px; min-height:48px;">
-                    {row['title']}
-                </h4>
-                <p style="font-size:12px; color:#64748b;">
-                    Similarity: {row['similarity']:.2f}
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+    # ===== GRID RAPI (4 KOLOM) =====
+    cols_per_row = 4
+    rows = [
+        recommendations.iloc[i:i + cols_per_row]
+        for i in range(0, len(recommendations), cols_per_row)
+    ]
+
+    for row in rows:
+        cols = st.columns(cols_per_row)
+        for col, (_, movie) in zip(cols, row.iterrows()):
+            with col:
+                st.markdown(f"""
+                <div class="rec-card">
+                    <h4 style="font-size:14px; min-height:48px; margin-bottom:8px;">
+                        {movie['title']}
+                    </h4>
+                    <p style="font-size:12px; color:#64748b; margin:0;">
+                        Similarity: {movie['similarity']:.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
 
 # =========================
 # FOOTER
